@@ -17,7 +17,7 @@ end
 def fetch_results
   response = HTTParty.get(ENDPOINT)
   results = JSON.parse(response.body, symbolize_names: true)
-  results[:features].select { |article_hash| valid_entry?(article_hash) }.
+  results[:features].select { |article_hash| valid_entry?(article_hash[:properties]) }.
     map { |article_hash| process_entry_info(article_hash) }.
     each { |article_hash| ScraperWiki.save_sqlite(%i(id), article_hash) }
 end
@@ -35,7 +35,7 @@ def process_entry_info(entry_hash)
 end
 
 def valid_entry?(entry)
-  entry[:Tender_Date].nil? || Date.strptime(entry[:Tender_Date]) >= Date.current
+  entry[:Tender_Date].nil? || Date.strptime(entry[:Tender_Date]) >= Date.today
 end
 
 clean_table
