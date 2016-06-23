@@ -14,10 +14,6 @@ def squish(str)
   str.gsub(/\A[[:space:]]+/, '').gsub(/[[:space:]]+\z/, '').gsub(/[[:space:]]+/, ' ')
 end
 
-def normalize(str)
-  squish(CODER.decode(str))
-end
-
 def fetch_results
   response = HTTParty.get(ENDPOINT)
   results = JSON.parse(response.body, symbolize_names: true)
