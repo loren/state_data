@@ -1,25 +1,46 @@
-# This is a template for a Ruby scraper on morph.io (https://morph.io)
-# including some code snippets below that you should find helpful
+require 'scraperwiki'
+require 'httparty'
+require 'date'
 
-# require 'scraperwiki'
-# require 'mechanize'
-#
-# agent = Mechanize.new
-#
-# # Read in a page
-# page = agent.get("http://foo.com")
-#
-# # Find somehing on the page using css selectors
-# p page.at('div.content')
-#
-# # Write out to the sqlite database using scraperwiki library
-# ScraperWiki.save_sqlite(["name"], {"name" => "susan", "occupation" => "software developer"})
-#
-# # An arbitrary query against the database
-# ScraperWiki.select("* from data where 'name'='peter'")
+ENDPOINT = 'http://bids.state.gov/geoserver/opengeo/ows?service=WFS&version=1.0.0&request=GetFeature&srsName=EPSG:4326&typeName=opengeo%3ADATATABLE&outputformat=json&FILTER=%3CFilter%3E%0A%3CPropertyIsEqualTo%3E%0A%09%09%09%3CPropertyName%3ECleared%3C%2FPropertyName%3E%0A%09%09%09%3CLiteral%3E1%3C%2FLiteral%3E%0A%09%09%3C%2FPropertyIsEqualTo%3E%0A%3C%2FFilter%3E'
 
-# You don't have to do things with the Mechanize or ScraperWiki libraries.
-# You can use whatever gems you want: https://morph.io/documentation/ruby
-# All that matters is that your final data is written to an SQLite database
-# called "data.sqlite" in the current working directory which has at least a table
-# called "data".
+def clean_table
+  ScraperWiki.sqliteexecute('DELETE FROM data')
+rescue SqliteMagic::NoSuchTable
+  puts "Data table does not exist yet"
+end
+
+def squish(str)
+  str.gsub(/\A[[:space:]]+/, '').gsub(/[[:space:]]+\z/, '').gsub(/[[:space:]]+/, ' ')
+end
+
+def normalize(str)
+  squish(CODER.decode(str))
+end
+
+def fetch_results
+  response = HTTParty.get(ENDPOINT)
+  results = JSON.parse(response.body, symbolize_names: true)
+  results[:features].select { |article_hash| valid_entry?(article_hash) }.
+    map { |article_hash| process_entry_info(article_hash) }.
+    each { |article_hash| ScraperWiki.save_sqlite(%i(id), article_hash) }
+end
+
+def process_entry_info(entry_hash)
+  entry = entry_hash[:properties]
+  entry[:id] = entry_hash[:id]
+  %i(Project_Announced Tender_Date).each do |field|
+    entry[field] &&= Date.parse(entry[field]).iso8601
+  end
+  %i(Post_Comments Project_Description Project_Title Keyword Project_POCs).each do |field|
+    entry[field] &&= squish(entry[field])
+  end
+  entry
+end
+
+def valid_entry?(entry)
+  entry[:Tender_Date].nil? || Date.strptime(entry[:Tender_Date]) >= Date.current
+end
+
+clean_table
+fetch_results
